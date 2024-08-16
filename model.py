@@ -66,11 +66,14 @@ class MultiHeadAttention(nn.Module):
 class FeedForward(nn.Module):
     def __init__(self, d_model, d_ff):
         super().__init__()
-        # Initialize feed-forward layers
+        self.linear1 = nn.Linear(d_model, d_ff)
+        self.linear2 = nn.Linear(d_ff, d_model)
 
     def forward(self, x):
-        # Implement feed-forward network
-        pass
+        x = self.linear1(x)
+        x = F.relu(x)
+        x = self.linear2(x)
+        return x
 
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
