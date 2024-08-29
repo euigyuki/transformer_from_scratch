@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import unittest
 import math
 
@@ -28,9 +29,9 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = d_model // num_heads #splitting the embedding dimensions by the number of heads: will focus on specific parts of the embeddings
         
-        self.q_linear = nn.Linear(d_model, d_model)
-        self.k_linear = nn.Linear(d_model, d_model)
-        self.v_linear = nn.Linear(d_model, d_model)
+        self.q_linear = nn.Linear(d_model, d_model) # the resuling shape of Q is (batch_size, seq_len, d_model)
+        self.k_linear = nn.Linear(d_model, d_model) # the resuling shape of K is (batch_size, seq_len, d_model)
+        self.v_linear = nn.Linear(d_model, d_model) # the resuling shape of V is (batch_size, seq_len, d_model)
         self.out = nn.Linear(d_model, d_model)
         
     def forward(self, query, key, value, mask=None):
@@ -64,44 +65,70 @@ class MultiHeadAttention(nn.Module):
         return self.out(x)
 
 class FeedForward(nn.Module):
-    def __init__(self, d_model, d_ff):
+    def __init__(self, d_model, d_ff,dropout=0.1):
         super().__init__()
-        self.linear1 = nn.Linear(d_model, d_ff)
-        self.linear2 = nn.Linear(d_ff, d_model)
+        self.linear1 = nn.Linear(d_model, d_ff) # linear transformation from d_model to d_ff
+        self.linear2 = nn.Linear(d_ff, d_model) # linear transformation from d_ff to d_model
+        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
-        x = self.linear1(x)
-        x = F.relu(x)
-        x = self.linear2(x)
-        return x
+    # the starting shape of x is (batch_size, seq_len, d_model)
+    def forward(self, x): 
+        x = self.linear1(x) # resuling shape is (batch_size, seq_len, d_ff)
+        x = F.relu(x) # resulting shape is (batch_size, seq_len, d_ff)
+        x = self.dropout(x) # resulting shape is (batch_size, seq_len, d_ff)
+        x = self.linear2(x) # resulting shape is (batch_size, seq_len, d_model)
+        return x # resulting shape is (batch_size, seq_len, d_model)
 
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super().__init__()
-        self.self_attn = MultiHeadAttention(d_model, num_heads)
-        self.feed_forward = FeedForward(d_model, d_ff)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
+        self.self_attn = MultiHeadAttention(d_model, num_heads) # self attention mechanism from the multihead attention class from above    
+        self.feed_forward = FeedForward(d_model, d_ff) # feed forward mechanism from the feed forward class from above
+        self.norm1 = nn.LayerNorm(d_model) # from the layer normalization class from pytorch
+        self.norm2 = nn.LayerNorm(d_model) # from the layer normalization class from pytorch
+        self.dropout = nn.Dropout(dropout) # dropout mechanism - regularization technique to prevent overfitting
 
-    def forward(self, x, mask):
-        # Implement encoder layer
-        pass
+    def forward(self, x, mask): # x is the input sequence, mask is the mask for the input sequence
+        # Self-attention
+        #x has the shape (batch_size, seq_len, d_model)
+        attn_output = self.self_attn(x, x, x, mask) # the resulting shape of attn_output is (batch_size, seq_len, d_model)
+        #the first x is the query, the second x is the key, and the third x is the value
+        x = x + self.dropout(attn_output) # the resulting shape of x is (batch_size, seq_len, d_model)
+        x = self.norm1(x) # the resuling shape of x is (batch_size, seq_len, d_model)
+        
+        # Feed-forward
+        ff_output = self.feed_forward(x) # the resulting shape of ff_output is (batch_size, seq_len, d_model)
+        x = x + self.dropout(ff_output) # the resulting shape of x is (batch_size, seq_len, d_model)
+        x = self.norm2(x) # the resulting shape of x is (batch_size, seq_len, d_model)
+        
+        return x
 
 class DecoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super().__init__()
-        self.self_attn = MultiHeadAttention(d_model, num_heads)
-        self.cross_attn = MultiHeadAttention(d_model, num_heads)
-        self.feed_forward = FeedForward(d_model, d_ff)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
+        self.self_attn = MultiHeadAttention(d_model, num_heads) # This is the self attention mechanism using the multihead attention class from above
+        self.cross_attn = MultiHeadAttention(d_model, num_heads) # This is the cross attention mechanism using the multihead attention class from above
+        self.feed_forward = FeedForward(d_model, d_ff) # This is the feed forward mechanism using the feed forward class from above
+        self.norm1 = nn.LayerNorm(d_model) # This is the layer normalization mechanism from pytorch
+        self.norm2 = nn.LayerNorm(d_model) # This is the layer normalization mechanism from pytorch
+        self.norm3 = nn.LayerNorm(d_model) # This is the layer normalization mechanism from pytorch
+        self.dropout = nn.Dropout(dropout) # This is the dropout mechanism from pytorch
 
     def forward(self, x, enc_output, src_mask, tgt_mask):
         # Implement decoder layer
-        pass
+        attention_output = self.self_attn(x, x, x, tgt_mask) # self attention mechanism
+        x = x + self.dropout(attention_output) # dropout mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+        x = self.norm1(x) # layer normalization mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+
+        cross_attention_output = self.cross_attn(x, enc_output, enc_output, src_mask) # cross attention mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+        x = x + self.dropout(cross_attention_output) # dropout mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+        x = self.norm2(x) # layer normalization mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+
+        ff_output = self.feed_forward(x) # feed forward mechanism and resuling shape of ff_output is (batch_size, seq_len, d_model)
+        x = x + self.dropout(ff_output) # dropout mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+        x = self.norm3(x) # layer normalization mechanism and resuling shape of x is (batch_size, seq_len, d_model)
+        return x # resulting shape of x is (batch_size, seq_len, d_model)
+        
 
 class Transformer(nn.Module):
     def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout):
