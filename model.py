@@ -173,6 +173,18 @@ class Transformer(nn.Module):
         # Implement full transformer forward pass
         pass
 
+    def forward(self, src, tgt, src_mask, tgt_mask):
+        # Encode the source sequence
+        enc_output = self.encode(src, src_mask)
+        
+        # Decode the target sequence
+        dec_output = self.decode(tgt, enc_output, src_mask, tgt_mask)
+        
+        # Final linear layer
+        output = self.fc_out(dec_output)
+        
+        return output
+
 class TestTransformerComponents(unittest.TestCase):
     def test_positional_encoding(self):
         d_model = 512
