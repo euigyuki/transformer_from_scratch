@@ -17,10 +17,10 @@ class PositionalEncoding(nn.Module):
         pe[:,0, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
 
-    def forward(self, x):
+    def forward(self, x): 
         print(x.size(0))
         return x + self.pe[:x.size(0)] # of the maximum lookup table, it will only look at the first x.size(0) elements, which is the length of the input sequence
-
+        # the resulting shape of x is (batch_size, seq_len, max_len)
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads):
@@ -101,7 +101,7 @@ class EncoderLayer(nn.Module):
         x = x + self.dropout(ff_output) # the resulting shape of x is (batch_size, seq_len, d_model)
         x = self.norm2(x) # the resulting shape of x is (batch_size, seq_len, d_model)
         
-        return x
+        return x # the resulting shape of x is (batch_size, seq_len, d_model)
 
 class DecoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
@@ -133,27 +133,46 @@ class DecoderLayer(nn.Module):
 class Transformer(nn.Module):
     def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout):
         super().__init__()
-        self.encoder_embedding = nn.Embedding(src_vocab_size, d_model)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
-        self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
+        self.encoder_embedding = nn.Embedding(src_vocab_size, d_model) #lookup table with size (src_vocab_size, d_model)
+        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model) #lookup table with size (tgt_vocab_size, d_model)
+        self.positional_encoding = PositionalEncoding(d_model, max_seq_length) 
 
-        self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
-        self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
+        self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]) #storing multiple encoder layers
+        self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]) #storing multiple decoder layers
 
-        self.fc_out = nn.Linear(d_model, tgt_vocab_size)
-        self.dropout = nn.Dropout(dropout)
+        self.fc_out = nn.Linear(d_model, tgt_vocab_size) #linear transformation from d_model to tgt_vocab_size
+        self.dropout = nn.Dropout(dropout) #dropout mechanism
 
     def encode(self, src, src_mask):
-        # Implement encoder
-        pass
+        # Apply embedding to the source input
+        src = self.encoder_embedding(src)  # Shape: (batch_size, src_seq_len, d_model)
+        
+        # Add positional encoding
+        src = self.positional_encoding(src)  # Shape: (batch_size, src_seq_len, d_model)
+        
+        # Apply dropout
+        src = self.dropout(src)
+        
+        # Pass through encoder layers
+        for encoder_layer in self.encoder_layers:
+            src = encoder_layer(src, src_mask)
+        
+        return src  # Shape: (batch_size, src_seq_len, d_model)
 
     def decode(self, tgt, memory, src_mask, tgt_mask):
-        # Implement decoder
-        pass
+        src = self.decoder_embedding(tgt)  # Shape: (batch_size, tgt_seq_len, d_model)
+        src = self.positional_encoding(src)  # Shape: (batch_size, tgt_seq_len, d_model)
+        src = self.dropout(src) # Shape: (batch_size, tgt_seq_len, d_model)
+        for decoder_layer in self.decoder_layers:
+            src = decoder_layer(src, memory, src_mask, tgt_mask)
+        output = self.fc_out(src)
+        return output
+      
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         # Implement full transformer forward pass
         pass
+
 class TestTransformerComponents(unittest.TestCase):
     def test_positional_encoding(self):
         d_model = 512
